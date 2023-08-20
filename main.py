@@ -6,7 +6,7 @@ Version: 1.0
 
 import os
 import argparse
-import data_process_origin as data_process
+# import data_process_origin as data_process
 import data_process
 # import train_process_debug as train_process
 import train_process
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     parse.add_argument('-run_type', type=int,
                        default=1, help='1: train, 2: debug train, 3: dev, 4: test')
     parse.add_argument('-save_model_path', type=str,
-                       default='checkpoint', help='save the good model.pth path')
+                       default='checkpoints', help='save the good model.pth path')
     parse.add_argument('-add_note', type=str, default='fakenews-2way', help='Additional instructions when saving files')  # ''
     parse.add_argument('-gpu_num', type=str, default='0', help='gpu index')
     parse.add_argument('-gpu0_bsz', type=int, default=0,

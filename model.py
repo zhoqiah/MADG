@@ -365,7 +365,9 @@ class FuseModel(nn.Module):
         transformer_encoder_layer = nn.TransformerEncoderLayer(d_model=opt.tran_dim, nhead=opt.tran_dim//64, dim_feedforward=opt.tran_dim * 4)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=transformer_encoder_layer, num_layers=opt.tran_num_layers)
         # self.sentence_transformer = SentenceTransformer('all-MiniLM-L6-v2')
-        self.sentence_transformer = SentenceTransformer('microsoft/mpnet-base')
+        self.sentence_transformer = SentenceTransformer(
+                                            'microsoft/mpnet-base',
+                                            cache_folder="./weights/sentence_transformers")
 
 
         if self.fuse_type == 'att':

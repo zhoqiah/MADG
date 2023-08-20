@@ -4,7 +4,7 @@ Date: 2022/4/11 上午10:26
 Version: 1.0
 """
 
-from model1 import ModelParam
+from model import ModelParam
 import torch
 from util.write_file import WriteFile
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, classification_report
