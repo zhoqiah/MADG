@@ -92,12 +92,12 @@ def train_process(opt, train_loader, dev_loader, test_loader, cl_model, criterti
             augment_param.set_data_param(texts=texts_augment, bert_attention_mask=bert_attention_mask_augment, images=image_augment, text_image_mask=text_image_mask_augment)
 
             origin_res, image_init, text_init, text_length = cl_model(orgin_param, augment_param, labels, target_labels, text)
-            loss_contrastive = contrastive_criterion(image_init, text_init, text_length)
+            # loss_contrastive = contrastive_criterion(image_init, text_init, text_length)
             classify_loss = critertion(origin_res, labels)
 
             # 去掉对比学习损失
-            loss = classify_loss + loss_contrastive / opt.acc_batch_size
-            # loss = classify_loss / opt.acc_batch_size
+            # loss = classify_loss + loss_contrastive / opt.acc_batch_size
+            loss = classify_loss / opt.acc_batch_size
             # loss = loss_contrastive / opt.acc_batch_size
 
             # loss = (classify_loss + cl_loss * opt.cl_loss_alpha + cl_self_loss * opt.cl_self_loss_alpha) / opt.acc_batch_size
@@ -110,7 +110,7 @@ def train_process(opt, train_loader, dev_loader, test_loader, cl_model, criterti
                 if log_summary_writer:
                     log_summary_writer.add_scalar('train_info/loss', loss.item(), global_step=step_num + epoch_step_num)
                     log_summary_writer.add_scalar('train_info/classify_loss', classify_loss.item(), global_step=step_num + epoch_step_num)
-                    log_summary_writer.add_scalar('train_info/cl_loss', loss_contrastive.item(), global_step=step_num + epoch_step_num)
+                    # log_summary_writer.add_scalar('train_info/cl_loss', loss_contrastive.item(), global_step=step_num + epoch_step_num)
                     # log_summary_writer.add_scalar('train_info/cl_self_loss', cl_self_loss.item(), global_step=step_num + epoch_step_num)
                     log_summary_writer.add_scalar('train_info/lr', optimizer.param_groups[0]['lr'], global_step=step_num + epoch_step_num)
                     log_summary_writer.add_scalar('train_info/fuse_lr', optimizer.param_groups[1]['lr'], global_step=step_num + epoch_step_num)
@@ -161,4 +161,4 @@ def train_process(opt, train_loader, dev_loader, test_loader, cl_model, criterti
             "run_loss": run_loss
         }
         # debug：正常运行不要把下面的代码注释掉
-        last_F1, last_Accuracy = dev_process.dev_process(opt, critertion, cl_model, dev_loader, test_loader, last_F1, last_Accuracy, train_log, log_summary_writer)
+        # last_F1, last_Accuracy = dev_process.dev_process(opt, critertion, cl_model, dev_loader, test_loader, last_F1, last_Accuracy, train_log, log_summary_writer)

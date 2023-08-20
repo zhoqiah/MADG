@@ -281,7 +281,7 @@ class ActivateFun(nn.Module):
 class TextModel(nn.Module):
     def __init__(self, opt):
         super(TextModel, self).__init__()
-        abl_path = ''
+        abl_path = './weights/'
 
         if opt.text_model == 'bert-base':
             self.config = BertConfig.from_pretrained(abl_path + 'bert-base-uncased/')

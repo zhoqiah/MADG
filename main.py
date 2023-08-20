@@ -141,7 +141,7 @@ if __name__ == '__main__':
     tokenizer = None
     abl_path = ''
     if opt.text_model == 'bert-base':
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased/vocab.txt')
+        tokenizer = BertTokenizer.from_pretrained('./weights/bert-base-uncased/vocab.txt')
 
     if opt.data_type == 'HFM':
         data_path_root = abl_path + 'dataset/data/HFM/'
