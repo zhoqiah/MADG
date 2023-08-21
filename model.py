@@ -30,6 +30,22 @@ from torch.nn.utils.clip_grad import clip_grad_norm
 import numpy as np
 from collections import OrderedDict
 
+from functools import partial
+# from models.vit import VisionTransformer
+# from models.xbert import BertConfig, BertForMaskedLM
+
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [torch.ones_like(tensor)
+        for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
 
 class ModelParam:
     def __init__(self, texts=None, images=None, bert_attention_mask=None, text_image_mask=None, segment_token=None, image_coordinate_position_token=None, text=None):
@@ -439,6 +455,123 @@ class FuseModel(nn.Module):
 
 
 class CLModel(nn.Module):
+    def __init__(self, opt, temp=0.07):
+        super(CLModel, self).__init__()
+        self.fuse_model = FuseModel(opt)
+        # self.temperature = opt.temperature
+        self.set_cuda = opt.cuda
+
+        self.orgin_linear_change = nn.Sequential(
+            nn.Linear(opt.tran_dim, opt.tran_dim),
+            ActivateFun(opt),
+            nn.Linear(opt.tran_dim, opt.tran_dim)
+        )
+
+        self.augment_linear_change = nn.Sequential(
+            nn.Linear(opt.tran_dim, opt.tran_dim),
+            ActivateFun(opt),
+            nn.Linear(opt.tran_dim, opt.tran_dim)
+        )
+
+        self.output_classify = nn.Sequential(
+            nn.Dropout(opt.l_dropout),
+            nn.Linear(opt.tran_dim, opt.tran_dim // 2),
+            ActivateFun(opt),
+            nn.Linear(opt.tran_dim // 2, 2)  # 2 3 6
+        )
+
+        # ITCLoss
+        # self.vision_proj = nn.Linear(vision_width, embed_dim)
+        # self.text_proj = nn.Linear(text_width, embed_dim)
+        # bert_config = BertConfig.from_json_file(bert_config_path)
+        # create momentum models
+        # self.visual_encoder_m = VisionTransformer(
+            # img_size=img_size, patch_size=16, embed_dim=768, depth=12, num_heads=12,
+            # mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6))
+        # self.vision_proj_m = nn.Linear(vision_width, embed_dim)
+        # self.text_encoder_m = BertForMaskedLM.from_pretrained(text_encoder, config=bert_config)
+        # self.text_proj_m = nn.Linear(text_width, embed_dim)
+        self.temp = nn.Parameter(torch.ones([]) * temp)
+        # create the queue
+        self.queue_size = 65536
+        self.register_buffer("image_queue", torch.randn(opt.tran_dim, self.queue_size))
+        self.register_buffer("text_queue", torch.randn(opt.tran_dim, self.queue_size))
+        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+
+        self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
+        self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
+
+
+    def forward(self, data_orgin, data_augment = None, labels=None, target_labels=None, text=None, alpha = .5):
+        orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts, data_orgin.bert_attention_mask,
+                                                                     data_orgin.images, data_orgin.text_image_mask,text)
+
+        # """grad_cam"""
+        # orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts,
+        #                                                                 data_orgin.bert_attention_mask,
+        #                                                                 data_orgin.images, data_orgin.text_image_mask,
+        #                                                                 data_orgin.text)
+        output = self.output_classify(orgin_res)
+
+        # ITCLoss
+        image_feat = F.normalize(image_init[:, 0, :], dim=-1)
+        text_feat = F.normalize(text_init[:, 0, :], dim=-1)
+        # get momentum features
+        with torch.no_grad():
+            self.temp.clamp_(0.001,0.5)
+            # self._momentum_update()
+            # image_embeds_m = self.visual_encoder_m(data_orgin.images)
+            # image_feat_m = F.normalize(self.vision_proj_m(image_embeds_m[:,0,:]),dim=-1)
+            image_feat_m = image_feat
+            image_feat_all = torch.cat([image_feat_m.t(),self.image_queue.clone().detach()],dim=1)
+
+            # text_output_m = self.text_encoder_m.bert(text.input_ids, attention_mask = text.attention_mask,
+                                                # return_dict = True, mode = 'text')
+            # text_feat_m = F.normalize(self.text_proj_m(text_output_m.last_hidden_state[:,0,:]),dim=-1)
+            text_feat_m = text_feat
+            text_feat_all = torch.cat([text_feat_m.t(),self.text_queue.clone().detach()],dim=1)
+
+            sim_i2t_m = image_feat_m @ text_feat_all / self.temp
+            sim_t2i_m = text_feat_m @ image_feat_all / self.temp
+
+            sim_targets = torch.zeros(sim_i2t_m.size()).to(data_orgin.images.device)
+            sim_targets.fill_diagonal_(1)
+
+            sim_i2t_targets = alpha * F.softmax(sim_i2t_m, dim=1) + (1 - alpha) * sim_targets
+            sim_t2i_targets = alpha * F.softmax(sim_t2i_m, dim=1) + (1 - alpha) * sim_targets
+
+        sim_i2t = image_feat @ text_feat_all / self.temp
+        sim_t2i = text_feat @ image_feat_all / self.temp
+
+        loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1)*sim_i2t_targets,dim=1).mean()
+        loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1)*sim_t2i_targets,dim=1).mean()
+
+        loss_ita = (loss_i2t+loss_t2i)/2
+        self._dequeue_and_enqueue(image_feat_m, text_feat_m)
+
+        return output, image_init, text_init, text_length, loss_ita
+
+    @torch.no_grad()
+    def _dequeue_and_enqueue(self, image_feat, text_feat):
+        # gather keys before updating queue
+        # image_feats = concat_all_gather(image_feat)
+        # text_feats = concat_all_gather(text_feat)
+        image_feats = image_feat
+        text_feats = text_feat
+
+        batch_size = image_feats.shape[0]
+
+        ptr = int(self.queue_ptr)
+        assert self.queue_size % batch_size == 0  # for simplicity
+
+        # replace the keys at ptr (dequeue and enqueue)
+        self.image_queue[:, ptr:ptr + batch_size] = image_feats.T
+        self.text_queue[:, ptr:ptr + batch_size] = text_feats.T
+        ptr = (ptr + batch_size) % self.queue_size  # move pointer
+
+        self.queue_ptr[0] = ptr
+
+class CLModel_bak(nn.Module):
     def __init__(self, opt):
         super(CLModel, self).__init__()
         self.fuse_model = FuseModel(opt)

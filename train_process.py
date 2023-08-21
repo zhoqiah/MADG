@@ -49,6 +49,7 @@ def train_process(opt, train_loader, dev_loader, test_loader, cl_model, criterti
     contrastive_criterion = ContrastiveLoss(opt=opt,
                                      margin=opt.margin,
                                      max_violation=opt.max_violation)
+
     last_F1 = 0
     last_Accuracy = 0
     for epoch in trange(opt.epoch, desc='Epoch:'):
@@ -91,7 +92,7 @@ def train_process(opt, train_loader, dev_loader, test_loader, cl_model, criterti
             orgin_param.set_data_param(texts=texts_origin, bert_attention_mask=bert_attention_mask, images=image_origin, text_image_mask=text_image_mask)
             augment_param.set_data_param(texts=texts_augment, bert_attention_mask=bert_attention_mask_augment, images=image_augment, text_image_mask=text_image_mask_augment)
 
-            origin_res, image_init, text_init, text_length = cl_model(orgin_param, augment_param, labels, target_labels, text)
+            origin_res, image_init, text_init, text_length, loss_ita = cl_model(orgin_param, augment_param, labels, target_labels, text)
             # loss_contrastive = contrastive_criterion(image_init, text_init, text_length)
             classify_loss = critertion(origin_res, labels)
 
