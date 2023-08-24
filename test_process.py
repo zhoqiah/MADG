@@ -24,9 +24,9 @@ def test_process(opt, critertion, cl_model, test_loader, last_F1=None, log_summa
 
     orgin_param = ModelParam()
 
-    contrastive_criterion = ContrastiveLoss(opt=opt,
-                                            margin=opt.margin,
-                                            max_violation=opt.max_violation)
+    # contrastive_criterion = ContrastiveLoss(opt=opt,
+                                            # margin=opt.margin,
+                                            # max_violation=opt.max_violation)
 
     with torch.no_grad():
         cl_model.eval()
@@ -49,10 +49,12 @@ def test_process(opt, critertion, cl_model, test_loader, last_F1=None, log_summa
             orgin_param.set_data_param(texts=texts_origin, bert_attention_mask=bert_attention_mask, images=image_origin,
                                        text_image_mask=text_image_mask)
 
-            origin_res, image_init, text_init, text_length = cl_model(orgin_param, labels=labels, text=text)
-            loss_contrastive = contrastive_criterion(image_init, text_init, text_length)
+            origin_res, image_init, text_init, text_length, loss_ita = cl_model(orgin_param, labels=labels, text=text)
+            # loss_contrastive = contrastive_criterion(image_init, text_init, text_length)
 
-            loss = critertion(origin_res, labels) + loss_contrastive / opt.acc_batch_size
+            # loss = critertion(origin_res, labels) + loss_contrastive / opt.acc_batch_size
+            classify_loss = critertion(origin_res, labels)
+            loss = (classify_loss + loss_ita) / opt.acc_batch_size  # TODO loss权重可以进行调节
             # loss = loss_contrastive / opt.acc_batch_size
             # origin_res = cl_model(orgin_param, text=text)
 
