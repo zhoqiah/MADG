@@ -31,8 +31,10 @@ import numpy as np
 from collections import OrderedDict
 
 from functools import partial
+import layers
 # from models.vit import VisionTransformer
 # from models.xbert import BertConfig, BertForMaskedLM
+# from models.transformer.Models import Encoder
 
 @torch.no_grad()
 def concat_all_gather(tensor):
@@ -351,8 +353,8 @@ class FuseModel(nn.Module):
         else:
             self.use_cache = False
 
-        self.text_image_encoder = RobertaEncoder(self.text_config)
-        self.image_encoder = RobertaEncoder(self.image_config)
+        # self.text_image_encoder = RobertaEncoder(self.text_config)
+        # self.image_encoder = RobertaEncoder(self.image_config)
 
         self.text_change = nn.Sequential(
             nn.Linear(self.text_model.get_output_dim(), opt.tran_dim),
@@ -368,6 +370,8 @@ class FuseModel(nn.Module):
             nn.Linear(2048, opt.tran_dim),
             ActivateFun(opt)
         )  # 2048
+
+        """
         # self.encoder_layer = TransformerEncoderLayer(d_model=768, nhead=8)
         self.transformer = Transformer(nhead=1, num_encoder_layers=1, num_decoder_layers=1, d_model=768, dim_feedforward=128)  # 4,1,1,768,128;
 
@@ -384,7 +388,7 @@ class FuseModel(nn.Module):
         self.sentence_transformer = SentenceTransformer(
                                             'microsoft/mpnet-base',
                                             cache_folder="./weights/sentence_transformers")
-
+        """
 
         if self.fuse_type == 'att':
             self.output_attention = nn.Sequential(
@@ -428,7 +432,6 @@ class FuseModel(nn.Module):
         # concat
         text_image_transformer = torch.cat((text_init, image_init), dim=1)
         text_image_transformer = text_image_transformer.permute(0, 2, 1).contiguous()
-
 
         if self.fuse_type == 'max':
             text_image_output = torch.max(text_image_transformer, dim=2)[0]
@@ -501,10 +504,20 @@ class CLModel(nn.Module):
         self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
         self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
 
+        # encoder部分 融合图像和文本特征
+        self.multiheadattention = layers.MultiHeadAttention(8, opt.tran_dim, opt.tran_dim, opt.tran_dim, dropout=0.1)
+        self.positionwiseFeedForward = layers.PositionwiseFeedForward(opt.tran_dim, opt.tran_dim)
+        transformer_encoder_layer = nn.TransformerEncoderLayer(d_model=opt.tran_dim, nhead=opt.tran_dim//64, dim_feedforward=opt.tran_dim * 4)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=transformer_encoder_layer, num_layers=opt.tran_num_layers)
 
     def forward(self, data_orgin, data_augment = None, labels=None, target_labels=None, text=None, alpha = .5):
         orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts, data_orgin.bert_attention_mask,
                                                                      data_orgin.images, data_orgin.text_image_mask,text)
+
+        # 融合图文特征
+        out, att = self.multiheadattention(image_init, text_init, text_init)
+        out = self.positionwiseFeedForward(out)
+        out = self.transformer_encoder(out)
 
         # """grad_cam"""
         # orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts,
