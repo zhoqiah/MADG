@@ -515,7 +515,7 @@ class CLModel(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=transformer_encoder_layer, num_layers=opt.tran_num_layers)
 
         self.dadgnn = DADGNN(num_hidden=64, num_layers=5, num_heads=2, k=5, alpha=0.5,
-                  vocab=[], n_gram=4, drop_out=0.3, class_num=2, num_feats=opt.tran_dim)
+                  vocab=[], n_gram=4, drop_out=0.3, class_num=opt.tran_dim, num_feats=opt.tran_dim)
 
     def forward(self, data_orgin, data_augment = None, labels=None, target_labels=None, text=None, alpha = .5):
         orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts, data_orgin.bert_attention_mask,
@@ -535,7 +535,8 @@ class CLModel(nn.Module):
         #                                                                 data_orgin.images, data_orgin.text_image_mask,
         #                                                                 data_orgin.text)
 
-        output = self.output_classify(orgin_res)
+        # output = self.output_classify(orgin_res)
+        output = self.output_classify(out)
         # output = out
 
         # ITCLoss
