@@ -34,7 +34,11 @@ from functools import partial
 import layers
 # from models.vit import VisionTransformer
 # from models.xbert import BertConfig, BertForMaskedLM
-# from models.transformer.Models import Encoder
+# models.transformer. from models.transformer.Models import Encoder
+import gensim
+from models.dadgnn.attention_diffusion import GATNet
+from models.dadgnn.model_pre import DADGNN
+from dgl.nn.pytorch.glob import WeightAndSum
 
 @torch.no_grad()
 def concat_all_gather(tensor):
@@ -510,6 +514,9 @@ class CLModel(nn.Module):
         transformer_encoder_layer = nn.TransformerEncoderLayer(d_model=opt.tran_dim, nhead=opt.tran_dim//64, dim_feedforward=opt.tran_dim * 4)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer=transformer_encoder_layer, num_layers=opt.tran_num_layers)
 
+        self.dadgnn = DADGNN(num_hidden=64, num_layers=5, num_heads=2, k=5, alpha=0.5,
+                  vocab=[], n_gram=4, drop_out=0.3, class_num=2, num_feats=opt.tran_dim)
+
     def forward(self, data_orgin, data_augment = None, labels=None, target_labels=None, text=None, alpha = .5):
         orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts, data_orgin.bert_attention_mask,
                                                                      data_orgin.images, data_orgin.text_image_mask,text)
@@ -519,12 +526,17 @@ class CLModel(nn.Module):
         out = self.positionwiseFeedForward(out)
         out = self.transformer_encoder(out)
 
+        # dadgnn
+        out = self.dadgnn(out)
+
         # """grad_cam"""
         # orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts,
         #                                                                 data_orgin.bert_attention_mask,
         #                                                                 data_orgin.images, data_orgin.text_image_mask,
         #                                                                 data_orgin.text)
+
         output = self.output_classify(orgin_res)
+        # output = out
 
         # ITCLoss
         image_feat = F.normalize(image_init[:, 0, :], dim=-1)
