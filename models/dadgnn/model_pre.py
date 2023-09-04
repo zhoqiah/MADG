@@ -120,6 +120,8 @@ class DADGNN(torch.nn.Module):
         # batch_f = self.activation(self.linear1(batch_f))
         # batch_f = self.linear2(self.dropout(batch_f))
         h1 = self.gatnet(batch_graph, batch_f)
-        h1 = self.weight_and_sum(batch_graph, h1)
+        h1 = h1.reshape(features.shape)
+
+        # h1 = self.weight_and_sum(batch_graph, h1)
 
         return h1

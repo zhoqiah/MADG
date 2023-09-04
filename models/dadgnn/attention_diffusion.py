@@ -138,8 +138,8 @@ class GATNet(nn.Module):
     def forward(self, graph, features):
         h = features
         graph = graph.local_var()
-        results = [h]
+        # results = [h]
         for i, layer in enumerate(self.layers):
             h = layer(graph, h)
-            results.append(h)
+            # results.append(h)
         return h

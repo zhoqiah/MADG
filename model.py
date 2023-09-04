@@ -309,22 +309,45 @@ class CLModel(nn.Module):
         orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts, data_orgin.bert_attention_mask,
                                                                      data_orgin.images, data_orgin.text_image_mask,text)
 
+        # dadgnn
+        image_gnn_feature = self.dadgnn(image_init)
+        text_gnn_feature = self.dadgnn(text_init)
+
         # 融合图文特征
-        out, att = self.multiheadattention(image_init, text_init, text_init)
+        out, att = self.multiheadattention(image_gnn_feature, text_gnn_feature, text_gnn_feature)
         out = self.positionwiseFeedForward(out)
         out = self.transformer_encoder(out)
-
-        # dadgnn
-        out = self.dadgnn(out)
-
         # """grad_cam"""
         # orgin_res, image_init, text_init, text_length = self.fuse_model(data_orgin.texts,
         #                                                                 data_orgin.bert_attention_mask,
         #                                                                 data_orgin.images, data_orgin.text_image_mask,
         #                                                                 data_orgin.text)
 
+        # 降维
+        out = out.permute(0, 2, 1).contiguous()
+        if self.fuse_model.fuse_type == 'max':
+            text_image_output = torch.max(out, dim=2)[0]
+        elif self.fuse_model.fuse_type == 'att':
+            text_image_output = out.permute(0, 2, 1).contiguous()
+
+            text_image_mask = text_image_mask.permute(1, 0).contiguous()
+            text_image_mask = text_image_mask[0:text_image_output.size(1)]
+            text_image_mask = text_image_mask.permute(1, 0).contiguous()
+
+            text_image_alpha = self.output_attention(text_image_output)
+            text_image_alpha = text_image_alpha.squeeze(-1).masked_fill(text_image_mask == 0, -1e9)
+            text_image_alpha = torch.softmax(text_image_alpha, dim=-1)
+
+            text_image_output = (text_image_alpha.unsqueeze(-1) * text_image_output).sum(dim=1)
+        elif self.fuse_model.fuse_type == 'ave':
+            text_image_length = out.size(2)
+            text_image_output = torch.sum(out, dim=2) / text_image_length
+        else:
+            raise Exception('fuse_type设定错误')
+
+        # 计算分类
         # output = self.output_classify(orgin_res)
-        output = self.output_classify(out)
+        output = self.output_classify(text_image_output)
         # output = out
 
         # ITCLoss
