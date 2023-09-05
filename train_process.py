@@ -162,4 +162,4 @@ def train_process(opt, train_loader, dev_loader, test_loader, cl_model, criterti
             "run_loss": run_loss
         }
         # debug：正常运行不要把下面的代码注释掉
-        # last_F1, last_Accuracy = dev_process.dev_process(opt, critertion, cl_model, dev_loader, test_loader, last_F1, last_Accuracy, train_log, log_summary_writer)
+        last_F1, last_Accuracy = dev_process.dev_process(opt, critertion, cl_model, dev_loader, test_loader, last_F1, last_Accuracy, train_log, log_summary_writer)
